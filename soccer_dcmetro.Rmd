@@ -53,251 +53,27 @@ This is not to say that children growing up in these underserved areas are strip
 
 ## Data Collection
 
-Most youth clubs in the D.C. metropolitan area have at least one team in the [National Capital Soccer League](http://www.ncsl-soccer.com/) (NCSL). With the help of the `{rvest}` package, I began by scraping the names of each club from their listings webpage.
+Most youth clubs in the D.C. metropolitan area have at least one team in the [National Capital Soccer League](http://www.ncsl-soccer.com/) (NCSL). Beginning here, I collected the names of each club from their listings webpage, as well as the names and street addresses of each field on which each club plays.
 
-*Note: Freedom Soccer Club was removed from this list, as it moved to the Central Maryland Soccer Association prior to the Fall 2017 season. I allowed the reach of the remaining National Capital Soccer League clubs to set the geographic boundaries for this project. Then, other clubs from the states of Maryland and Virginia which participate in other leagues (e.g., Virginia Premier League, Club Champions League, Central Maryland Soccer Association), but which still fell within those geographic boundaries, were manually added to the data set.*
+*Note: Freedom Soccer Club was removed from this list, as it moved to the Central Maryland Soccer Association prior to the Fall 2017 season. I allowed the reach of the remaining National Capital Soccer League clubs to set the geographic boundaries for this project. Then, other clubs from the states of Maryland and Virginia which participate in other leagues (e.g., Virginia Premier League, Club Champions League, Central Maryland Soccer Association), but which still fell within those geographic boundaries, were also added to the data set.*
 
-```{r scrape.clubnames}
-library(rvest)
-library(dplyr)
-
-ncsl <- read_html("http://www.ncsl-soccer.com/Clubs/index_E.html?1508373282")
-
-clubs <- ncsl %>%
-        html_node("#cb-list-tbl-1") %>%
-        html_table(fill = TRUE)
-clubs <- data.frame(club.name = c(clubs$X1, clubs$X2, clubs$X3))
-clubs <- data.frame(club.name = sort(clubs$club.name))
-clubs$club.name <- as.character(clubs$club.name)
-clubs <- filter(clubs, club.name != "Freedom Soccer Club")
-```
-
-NCSL's website was very outdated--built with many nested tables and *without* the use of many classes or ids. Building a scraping function that accounted for all its quirks required a fair amount of trial and error. Using nested `for` loops and functions from the `{rvest}` pacakge, I navigated through the hierarchy of each club webpage and built a data frame containing the names and addresses of each soccer field, along with its corresponding club.
-
-```{r scrape.fieldinfo}
-## Set session of list of all clubs
-sessionTmp <- html_session("http://www.ncsl-soccer.com/Clubs/index_E.html?1508373282")
-
-## Empty data frame to put fields and addresses
-fields.df <- data.frame()
-
-## Clubs with both boys and girls teams
-for (i in c(1, 3:8, 10:15, 17:20, 22:26, 28:29, 31:33, 35:54, 56:65, 67:68, 71:72)) {
-        clubsessionTmp <- sessionTmp %>% follow_link(clubs[i,1])
-        
-        listTmp <- clubsessionTmp %>% 
-                                    html_nodes("div.ww-elements-display table.MainContent td table") %>% 
-                                    .[[6]] %>% 
-                                    html_nodes("a") %>% 
-                                    html_text(trim = TRUE)
-        
-        listTmp <- data.frame(club.name = rep(clubs[i,1], length(listTmp)), field.name = listTmp)
-        listTmp$club.name <- as.character(listTmp$club.name)
-        listTmp$field.name <- as.character(listTmp$field.name)
-        
-        for (p in 1:length(listTmp$field.name)) {
-                fieldTmp <- clubsessionTmp %>% 
-                                             follow_link(listTmp[p,2]) %>% 
-                                             html_nodes("table.MainContent table table b") %>%
-                                             .[[1]] %>% 
-                                             html_text(trim = TRUE)
-                
-                listTmp$field.address[p] <- fieldTmp
-        }
-        
-        fields.df <- rbind(fields.df, listTmp)
-}
-
-## Clubs with teams of only one gender
-for (i in c(2, 21, 27, 30, 34, 55, 66, 69:70)) {
-        clubsessionTmp <- sessionTmp %>% follow_link(clubs[i,1])
-        
-        listTmp <- clubsessionTmp %>% 
-                                    html_nodes("div.ww-elements-display table.MainContent td table") %>% 
-                                    .[[5]] %>% 
-                                    html_nodes("a") %>% 
-                                    html_text(trim = TRUE)
-        
-        listTmp <- data.frame(club.name = rep(clubs[i,1], length(listTmp)), field.name = listTmp)
-        listTmp$club.name <- as.character(listTmp$club.name)
-        listTmp$field.name <- as.character(listTmp$field.name)
-        
-        for (p in 1:length(listTmp$field.name)) {
-                fieldTmp <- clubsessionTmp %>% 
-                                             follow_link(listTmp[p,2]) %>% 
-                                             html_nodes("table.MainContent table table b") %>%
-                                             .[[1]] %>% 
-                                             html_text(trim = TRUE)
-                
-                listTmp$field.address[p] <- fieldTmp
-        }
-        
-        fields.df <- rbind(fields.df, listTmp)
-}
-```
-
-The above code was successful in capturing information for all but two clubs. (Both contained a Unicode character.) I captured the first club's information by making a small tweak to the previous function, and for the second, by inputting the information manually.
-
-```{r scrape.fieldinfo.misc}
-## Barca Futebol Club
-clubsessionTmp <- html_session("http://www.ncsl-soccer.com/teams/club/15599476.html")
-
-listTmp <- clubsessionTmp %>% 
-                            html_nodes("div.ww-elements-display table.MainContent td table") %>% 
-                            .[[5]] %>% 
-                            html_nodes("a") %>% 
-                            html_text(trim = TRUE)
-
-listTmp <- data.frame(club.name = rep(clubs[9,1], length(listTmp)), field.name = listTmp)
-listTmp$club.name <- as.character(listTmp$club.name)
-listTmp$field.name <- as.character(listTmp$field.name)
-
-for (p in 1:length(listTmp$field.name)) {
-        fieldTmp <- clubsessionTmp %>% 
-                                     follow_link(listTmp[p,2]) %>% 
-                                     html_nodes("table.MainContent table table b") %>%
-                                     .[[1]] %>% 
-                                     html_text(trim = TRUE)
-        
-        listTmp$field.address[p] <- fieldTmp
-}
-
-fields.df <- rbind(fields.df, listTmp)
-
-## Capital FC
-capFC <- data.frame(club.name = rep("CapitalFC", 2), 
-                    field.name = c("Randall Recreation Center #1 Full", 
-                                   "Watkins Elementary School - DC #1"), 
-                    field.address = c("25 I Street SW, Washington, DC 20024", 
-                                      "420 12th Street Southeast, Washington, DC 20003"))
-
-fields.df <- rbind(fields.df, capFC)
-```
-
-Next, I cleaned up the messy field addresses.
-
-```{r clean.fieldinfo}
-## Replace double spaces between street address and city names with a comma
-fields.df$field.address <- gsub("\\s\\s", ", ", fields.df$field.address)
-
-## Clean messy addresses
-fields.df[10,3] <- "400 Hoofs Run Drive, Alexandria, VA 22314"
-fields.df[c(11:12),3] <- "426 East Monroe Ave, Alexandria, VA 22301"
-fields.df[c(67:68),3] <- "699 College Parkway, Annapolis, MD 21409"
-fields.df[c(76:78),3] <- "4755 Hallowing Point Rd, Prince Frederick, MD 20678"
-fields.df[c(99:101,371:374),3] <- "16332 Cyclone Way, Culpeper, VA 22701"
-fields.df[c(111,430),3] <- "3825 Wisconsin Ave NW, Washington, DC 20016"
-fields.df[114,3] <- "675 University Dr, Shepherdstown, WV 25443"
-fields.df[121,3] <- "3300 Stafford Dr, Fairfax, VA 22030"
-fields.df[c(122:123),3] <- "1730 N Market St, Frederick, MD 21701"
-fields.df[c(129:130,189,368:370,422),3] <- "7700 Bull Run Dr, Centreville, VA 20121"
-fields.df[c(155:161),3] <- "1085 Utterback Store Rd, Great Falls, VA 22066"
-fields.df[210,3] <- "935 Spa Rd, Annapolis, MD 21401"
-fields.df[c(289,290),3] <- "13001 Chinn Park Dr, Woodbridge, VA 22192"
-fields.df[c(298,299),3] <- "1400 Lake Fairfax Dr, Reston, VA 20190"
-fields.df[358,3] <- "6815 Edsall Road, Springfield, VA 22151"
-fields.df[364,3] <- "499 Campus Drive, Martinsburg, WV 25404"
-fields.df[376,3] <- "7575 Rogues Rd, Nokesville, VA 20181"
-fields.df[c(377,423),3] <- "1460 University Dr, Winchester, VA 22601"
-fields.df[381,3] <- "2500 James Madison Dr, Vienna, VA 22181"
-fields.df[384,3] <- "7731 Leesburg Pike, Falls Church, VA 22043"
-fields.df[c(403:407),3] <- "255 Lakeview Cir, Stephens City, VA 22655"
-fields.df[431,3] <- "300 Van Buren St NW, Washington, DC 20012"
-fields.df[433,3] <- "3401 Woodburn Rd, Annandale, VA 22003"
-```
-
-After scouring the web, I identified the non-NCSL teams located within the geographic boundaries and manually added their information to the data frame.
-
-```{r input.otherclubs}
-## FC Virginia United
-fcv.united <- data.frame(club.name = rep("FC Virginia United", 6), 
-                         field.name = c("Bles Park #1", "Bles Park #2", 
-                                        "Evergreen Sportsplex #1", 
-                                        "Evergreen Sportsplex #2", 
-                                        "Evergreen Sportsplex #3", 
-                                        "Evergreen Sportsplex #4"), 
-                         field.address = c(rep("4830 Riverside Parkway, Ashburn, VA 20147", 2), 
-                                           rep("19623 Evergreen Mill Road, Leesburg, VA", 4)))
-
-## Annandale United FC
-aufc <- data.frame(club.name = rep("Annandale United FC", 4), 
-                   field.name = c("Annandale HS Stadium", 
-                                  "Annandale HS Track turf field", 
-                                  "Mason District Park #3 Front Turf", 
-                                  "Pine Ridge Park #4"),
-                   field.address = c(rep("4700 Medford Dr, Annandale, VA 22003",2), 
-                                     "6621 Columbia Pike, Annandale, VA 22003", 
-                                     "3401 Woodburn Rd, Annandale, VA 22003"))
-
-## Maryland United FC
-mufc <- read_html("http://www.mdunitedfc.org/facilities/playing-locations") %>% 
-        html_node("div.dii-content-story table") %>% 
-        html_table(fill = TRUE)
-mufc <- mufc[-c(1,2),-c(3:5)]
-names(mufc) <- c("field.name", "field.address")
-mufc$club.name <- rep("Maryland United FC", 20)
-mufc <- mufc[,c(3,1,2)]
-mufc[8,3] <- "2001 Church Rd, Bowie, MD 20721"
-
-## Ellicott City Soccer Club
-ecsc <- data.frame(club.name = "Ellicott City Soccer Club",
-                   field.name = "Chapelgate Christian Academy",
-                   field.address = "2600 Marriottsville Road, Marriottsville, MD 21104")
-
-## Prince William Courage
-pwsi <- data.frame(club.name = rep("Prince William Courage", 6))
-pwsi$field.name <- read_html("http://www.pwsi.org/Default.aspx?tabid=546279") %>% 
-        html_nodes("div.fs-right h3.fs-name") %>% 
-        html_text()
-pwsi$field.address <- read_html("http://www.pwsi.org/Default.aspx?tabid=546279") %>% 
-        html_nodes("div.fs-right p.fs-address") %>% 
-        html_text()
-pw.fields <- fields.df[c(289:297),c(1:3)]
-pwsi <- rbind(pwsi, pw.fields)
-pwsi <- pwsi[-c(1:3),]
-pwsi$club.name <- gsub("Prince William Soccer Club", "Prince William Courage", pwsi$club.name)
-pwsi[1,3] <- "1650 Prince William Parkway, Woodbridge, VA 22191"
-pwsi[2,3] <- "5070 Dale Blvd, Woodbridge, VA 22193"
-pwsi[3,3] <- "2201 York Dr, Woodbridge, VA 22191"
-
-## Pasadena Soccer Club
-pasadena <- data.frame(club.name = rep("Pasadena Soccer Club", 11),
-                       field.name = c("Lake Shore Athletic Complex A",
-                                      "Lake Shore Athletic Complex B",
-                                      "Lake Shore Athletic Complex C",
-                                      "Lake Shore Athletic Complex D",
-                                      "Riviera Beach Community Park",
-                                      "Muth Field",
-                                      "Tick Neck Park #1",
-                                      "Tick Neck Park #2",
-                                      "Tick Neck Park #3",
-                                      "Rock Creek Park",
-                                      "Jacobsville Recreation Area"),
-                       field.address = c(rep("850 Woods Road, Pasadena, MD 21122", 4),
-                                         "131 Meadow Rd, Pasadena, MD 21122",
-                                         "8513 St Jane Dr, Pasadena, MD 21122",
-                                         rep("7750 Edwin Raynor Blvd, Pasadena, MD 21122", 3),
-                                         "79 Bar Harbor Rd, Pasadena, MD 21122",
-                                         "64 Magothy Beach Rd, Pasadena, MD 21122"))
-
-fields.df <- rbind(fields.df, fcv.united, aufc, mufc, ecsc, pwsi, pasadena)
-rownames(fields.df) <- 1:nrow(fields.df)
-```
-
-Using the `{RDSTK}` package, I translated each field address to a set of coordinates.
+Then, using the `{RDSTK}` package, I translated each field address to a set of coordinates.
 
 ```{r translate.coordinates}
 library(RDSTK)
 
+fields.df <- read.csv("fields.csv", colClasses = "character")
 lats.longs <- do.call(rbind, lapply(fields.df$field.address, street2coordinates))
 fields.df$lat <- lats.longs$latitude ; fields.df$lng <- lats.longs$longitude
 ```
 
-Then, using functions from the `{dplyr}` package, I calculated the geographic center of each club's field locations. All field coordinates were weighted equally, including those clustered together in parks or other recreation areas.
+Using functions from the `{dplyr}` package, I calculated the geographic center of each club's field locations. All field coordinates were weighted equally, including those clustered together in parks or other recreation areas.
 
-*Note: I want to acknowledge that weighting each field location by the number of games played there over the course of the season may have resulted in a more accurate depiction of where clubs play their soccer, "on average." However, given what little difference this weighting was likely to make, I determined it was not worth the hours it would take to also scrape game data off NCSL's antiquated website.*
+*Note: I want to acknowledge that weighting each field location by the number of games played there over the course of the season may have resulted in a more accurate depiction of where clubs play their soccer, "on average." However, given what little difference this weighting was likely to make, I determined it was not worth the hours it would take to also pull game data off NCSL's antiquated website.*
 
 ```{r calc.geocenters}
+library(dplyr)
+
 clubs <- fields.df %>% 
         group_by(club.name) %>% 
         dplyr::summarize(lat = mean(lat), lng = mean(lng))
